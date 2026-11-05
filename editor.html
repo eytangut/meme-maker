@@ -20,7 +20,7 @@ aside{width:230px;display:flex;flex-direction:column;gap:8px}aside p{color:#aaa;
 <aside><button id="add">+ Add box</button><button id="del">Delete selected box</button><button id="col">Toggle text color (white/black)</button>
 <button id="all">Copy this layout to ALL images</button><button id="json">Download this config only</button>
 <p>Drag on empty space to draw a box. Drag a box to move, handles to resize. Magenta lines = snapping (edges, center, other boxes). Arrow keys nudge (Shift = 10px). Delete removes. Order of creation = order of the inputs on the site.</p>
-<p>Export: images are re-encoded as JPEG (max 1200px) and saved next to their .json. Unzip into the repo so the files land in <code>templates/</code>.</p></aside></main>
+<p>Export: images are re-encoded as JPEG with MozJPEG (max 1200px) and saved next to their .json. Unzip into the repo so the files land in <code>templates/</code>.</p></aside></main>
 <script>
 const $=s=>document.querySelector(s),cv=$('#cv'),cx=cv.getContext('2d');
 let items=[],cur=null,sel=-1,W=10,H=10,drag=null,guides=[];const T=8,HU=[340,45,160,200,270,20],col=(i,a=1)=>`hsl(${HU[i%6]} 90% 60%/${a})`;
@@ -61,10 +61,14 @@ $('#all').onclick=()=>{if(cur)items.forEach(it=>it.boxes=structuredClone(cur.box
 const cfg=it=>JSON.stringify({boxes:it.boxes.map(b=>({x:+b.x.toFixed(4),y:+b.y.toFixed(4),w:+b.w.toFixed(4),h:+b.h.toFixed(4),color:b.color}))});
 const save=(b,n)=>{const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=n;a.click()};
 $('#json').onclick=()=>cur&&save(new Blob([cfg(cur)]),cur.name+'.json');
+let mozP;const moz=()=>mozP||(mozP=import('https://cdn.jsdelivr.net/npm/@jsquash/jpeg@1.6.0/encode.js').then(m=>m.default));
+async function encode(c){try{const e=await moz(),d=c.getContext('2d').getImageData(0,0,c.width,c.height);
+ return new Blob([await e(d,{quality:78,progressive:true,optimize_coding:true,trellis_multipass:true,trellis_opt_zero:true,trellis_opt_table:true})],{type:'image/jpeg'})}
+ catch{return new Promise(r=>c.toBlob(r,'image/jpeg',.8))}}
 $('#zip').onclick=async()=>{const d=new JSZip().folder('templates'),used=new Set();
  for(const it of items){const n=it.name.replace(/[^\w\u0590-\u05ff-]+/g,'_')||'meme';let u=n,k=2;while(used.has(u))u=n+'_'+k++;used.add(u);
   const s=Math.min(1,1200/Math.max(it.im.width,it.im.height)),c=document.createElement('canvas');c.width=Math.round(it.im.width*s);c.height=Math.round(it.im.height*s);
   const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);x.drawImage(it.im,0,0,c.width,c.height);
-  d.file(u+'.jpg',await new Promise(r=>c.toBlob(r,'image/jpeg',.85)));d.file(u+'.json',cfg(it))}
+  d.file(u+'.jpg',await encode(c));d.file(u+'.json',cfg(it))}
  save(await d.parent.generateAsync({type:'blob'}),'templates.zip')};
 </script></body></html>
