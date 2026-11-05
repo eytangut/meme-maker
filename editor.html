@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Template editor</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}
+body{margin:0;font:15px system-ui,sans-serif;background:#12101f;color:#eee;display:flex;flex-direction:column;height:100vh}
+header{padding:10px 14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;background:#1c1932;border-bottom:1px solid #333}
+button,label.b{font:inherit;color:#fff;background:#3b3566;border:0;border-radius:8px;padding:8px 12px;cursor:pointer}
+button:hover,label.b:hover{background:#5146a0}#zip{background:#d6336c}
+#st{display:flex;gap:8px;padding:8px 14px;overflow-x:auto;min-height:74px;background:#17142a}
+#st img{height:56px;border-radius:6px;border:3px solid transparent;cursor:pointer}#st img.on{border-color:#ff2d7a}
+main{flex:1;display:flex;gap:14px;padding:14px;overflow:auto}
+#dz{flex:1;display:grid;place-items:start center}canvas{background:#000;cursor:crosshair;touch-action:none;max-width:100%}
+aside{width:230px;display:flex;flex-direction:column;gap:8px}aside p{color:#aaa;font-size:13px;margin:4px 0}
+</style></head><body>
+<header><label class="b">Add images<input id="fi" type="file" accept="image/*" multiple hidden></label>
+<button id="zip">Export templates.zip</button><span style="color:#aaa">or drop images anywhere</span></header>
+<div id="st"></div>
+<main><div id="dz"><canvas id="cv" width="10" height="10"></canvas></div>
+<aside><button id="add">+ Add box</button><button id="del">Delete selected box</button><button id="col">Toggle text color (white/black)</button>
+<button id="all">Copy this layout to ALL images</button><button id="json">Download this config only</button>
+<p>Drag on empty space to draw a box. Drag a box to move, handles to resize. Magenta lines = snapping (edges, center, other boxes). Arrow keys nudge (Shift = 10px). Delete removes. Order of creation = order of the inputs on the site.</p>
+<p>Export: images are re-encoded as JPEG (max 1200px) and saved next to their .json. Unzip into the repo so the files land in <code>templates/</code>.</p></aside></main>
+<script>
+const $=s=>document.querySelector(s),cv=$('#cv'),cx=cv.getContext('2d');
+let items=[],cur=null,sel=-1,W=10,H=10,drag=null,guides=[];const T=8,HU=[340,45,160,200,270,20],col=(i,a=1)=>`hsl(${HU[i%6]} 90% 60%/${a})`;
+const HN=[['nw',0,0],['n',.5,0],['ne',1,0],['e',1,.5],['se',1,1],['s',.5,1],['sw',0,1],['w',0,.5]];
+const dflt=()=>[{x:.03,y:.02,w:.94,h:.22,color:'#fff'},{x:.03,y:.76,w:.94,h:.22,color:'#fff'}];
+const px=b=>[b.x*W,b.y*H,b.w*W,b.h*H],cl=(v,a,b)=>Math.max(a,Math.min(b,v));
+function add(files){[...files].filter(f=>f.type.startsWith('image/')).forEach(f=>{const im=new Image();im.src=URL.createObjectURL(f);im.onload=()=>{const it={im,boxes:dflt(),name:f.name.replace(/\.\w+$/,'')};items.push(it);if(!cur)pick(it);else strip()}})}
+function strip(){$('#st').replaceChildren(...items.map(it=>{const i=new Image();i.src=it.im.src;i.className=it==cur?'on':'';i.onclick=()=>pick(it);return i}))}
+function pick(it){cur=it;sel=-1;const k=Math.min(900/it.im.width,560/it.im.height);cv.width=W=Math.round(it.im.width*k);cv.height=H=Math.round(it.im.height*k);strip();draw()}
+function handles(){const[x,y,w,h]=px(cur.boxes[sel]);return HN.map(([n,a,b])=>[x+a*w,y+b*h,n])}
+function draw(){if(!cur)return;cx.drawImage(cur.im,0,0,W,H);cx.setLineDash([4,4]);cx.strokeStyle='#fff8';cx.lineWidth=1;cx.beginPath();cx.moveTo(W/2,0);cx.lineTo(W/2,H);cx.moveTo(0,H/2);cx.lineTo(W,H/2);cx.stroke();cx.setLineDash([]);
+ cur.boxes.forEach((b,i)=>{const[x,y,w,h]=px(b);cx.fillStyle=col(i,.2);cx.fillRect(x,y,w,h);cx.strokeStyle=col(i);cx.lineWidth=i==sel?3:2;cx.strokeRect(x,y,w,h);cx.fillStyle=b.color=='#000'?'#000':'#fff';cx.font='bold 18px sans-serif';cx.fillText(i+1,x+6,y+20)});
+ if(cur.boxes[sel])handles().forEach(([x,y])=>{cx.fillStyle='#fff';cx.fillRect(x-4,y-4,8,8)});
+ cx.strokeStyle='#f0f';cx.lineWidth=1;guides.forEach(g=>{cx.beginPath();g.a=='x'?(cx.moveTo(g.p,0),cx.lineTo(g.p,H)):(cx.moveTo(0,g.p),cx.lineTo(W,g.p));cx.stroke()})}
+function lines(a){const D=a=='x'?W:H,o=[0,D/2,D];cur.boxes.forEach((b,i)=>{if(i==sel)return;const p=a=='x'?[b.x*W,b.w*W]:[b.y*H,b.h*H];o.push(p[0],p[0]+p[1]/2,p[0]+p[1])});return o}
+function best(a,c){let o=0,d=T+1,g;for(const l of lines(a))for(const v of c)if(Math.abs(l-v)<d){d=Math.abs(l-v);o=l-v;g=l}if(g!=null)guides.push({a,p:g});return o}
+const snap=(a,v)=>v+best(a,[v]);
+const pt=e=>{const r=cv.getBoundingClientRect();return[(e.clientX-r.left)*W/r.width,(e.clientY-r.top)*H/r.height]};
+cv.onpointerdown=e=>{if(!cur)return;cv.setPointerCapture(e.pointerId);const p=pt(e);
+ if(cur.boxes[sel]){const h=handles().find(([x,y])=>Math.hypot(x-p[0],y-p[1])<10);if(h){drag={m:'r',h:h[2],s:px(cur.boxes[sel]),p};return}}
+ const i=cur.boxes.findLastIndex(b=>{const[x,y,w,h]=px(b);return p[0]>=x&&p[0]<=x+w&&p[1]>=y&&p[1]<=y+h});
+ if(i>=0){sel=i;drag={m:'m',s:px(cur.boxes[i]),p}}else{cur.boxes.push({x:p[0]/W,y:p[1]/H,w:0,h:0,color:'#fff'});sel=cur.boxes.length-1;drag={m:'r',h:'se',s:[p[0],p[1],0,0],p,n:1}}
+ draw()};
+cv.onpointermove=e=>{if(!drag)return;const p=pt(e),[sx,sy,sw,sh]=drag.s,dx=p[0]-drag.p[0],dy=p[1]-drag.p[1];guides=[];let x=sx,y=sy,w=sw,h=sh;
+ if(drag.m=='m'){const ax=sx+dx,ay=sy+dy;x=cl(ax+best('x',[ax,ax+sw/2,ax+sw]),0,W-sw);y=cl(ay+best('y',[ay,ay+sh/2,ay+sh]),0,H-sh)}
+ else{const n=drag.h;let l=sx,r=sx+sw,t=sy,b=sy+sh;
+  if(n.includes('w'))l=cl(snap('x',sx+dx),0,W);if(n.includes('e'))r=cl(snap('x',sx+sw+dx),0,W);if(n.includes('n'))t=cl(snap('y',sy+dy),0,H);if(n.includes('s'))b=cl(snap('y',sy+sh+dy),0,H);
+  x=Math.min(l,r);w=Math.abs(r-l);y=Math.min(t,b);h=Math.abs(b-t)}
+ Object.assign(cur.boxes[sel],{x:x/W,y:y/H,w:w/W,h:h/H});draw()};
+cv.onpointerup=()=>{if(drag?.n){const[,,w,h]=px(cur.boxes[sel]);if(w<15||h<15){cur.boxes.pop();sel=-1}}drag=null;guides=[];draw()};
+addEventListener('keydown',e=>{if(!cur||!cur.boxes[sel])return;const b=cur.boxes[sel],d=e.shiftKey?10:1;
+ if(e.key=='Delete'||e.key=='Backspace'){cur.boxes.splice(sel,1);sel=-1}else if(e.key.startsWith('Arrow')){b.x+=(e.key=='ArrowRight')*d/W-(e.key=='ArrowLeft')*d/W;b.y+=(e.key=='ArrowDown')*d/H-(e.key=='ArrowUp')*d/H}else return;e.preventDefault();draw()});
+$('#fi').onchange=e=>add(e.target.files);addEventListener('dragover',e=>e.preventDefault());addEventListener('drop',e=>{e.preventDefault();add(e.dataTransfer.files)});
+$('#add').onclick=()=>{if(!cur)return;cur.boxes.push({x:.2,y:.4,w:.6,h:.2,color:'#fff'});sel=cur.boxes.length-1;draw()};
+$('#del').onclick=()=>{if(cur?.boxes[sel]){cur.boxes.splice(sel,1);sel=-1;draw()}};
+$('#col').onclick=()=>{const b=cur?.boxes[sel];if(b){b.color=b.color=='#000'?'#fff':'#000';draw()}};
+$('#all').onclick=()=>{if(cur)items.forEach(it=>it.boxes=structuredClone(cur.boxes))};
+const cfg=it=>JSON.stringify({boxes:it.boxes.map(b=>({x:+b.x.toFixed(4),y:+b.y.toFixed(4),w:+b.w.toFixed(4),h:+b.h.toFixed(4),color:b.color}))});
+const save=(b,n)=>{const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=n;a.click()};
+$('#json').onclick=()=>cur&&save(new Blob([cfg(cur)]),cur.name+'.json');
+$('#zip').onclick=async()=>{const d=new JSZip().folder('templates'),used=new Set();
+ for(const it of items){const n=it.name.replace(/[^\w\u0590-\u05ff-]+/g,'_')||'meme';let u=n,k=2;while(used.has(u))u=n+'_'+k++;used.add(u);
+  const s=Math.min(1,1200/Math.max(it.im.width,it.im.height)),c=document.createElement('canvas');c.width=Math.round(it.im.width*s);c.height=Math.round(it.im.height*s);
+  const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);x.drawImage(it.im,0,0,c.width,c.height);
+  d.file(u+'.jpg',await new Promise(r=>c.toBlob(r,'image/jpeg',.85)));d.file(u+'.json',cfg(it))}
+ save(await d.parent.generateAsync({type:'blob'}),'templates.zip')};
+</script></body></html>

@@ -1,0 +1,16 @@
+name: deploy
+on: {push: {branches: [main]}, workflow_dispatch: {}}
+permissions: {contents: read, pages: write, id-token: write}
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: {name: github-pages, url: "${{ steps.p.outputs.page_url }}"}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build templates/manifest.json from the images in templates/
+        run: cd templates && (ls | grep -iE '\.(jpe?g|png|webp|gif|avif)$' || true) | jq -R . | jq -s . > manifest.json
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with: {path: .}
+      - id: p
+        uses: actions/deploy-pages@v4
